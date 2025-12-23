@@ -1,92 +1,173 @@
 # AWS経験者向け マルチクラウド学習ロードマップ
 
-## 設計思想の違い
+---
 
-| 観点      | AWS     | Azure     | Google Cloud         |
-|---------|---------|-----------------------------|----------------------|
-| 生まれた背景  | ECサイト運営で培った大量・安定インフラの再利用 | 企業向けIT（Microsoft製品）をクラウドに統合 | 検索・広告で培った超大規模データ処理基盤 |
-| 得意分野    | 選択肢が多く、細かく組み合わせられる       | Microsoft製品と自然につながる         | データ分析・機械学習・高速ネットワーク  |
-| 基本的な考え方 | 部品を選んで自分で組み立てる           | 既存製品をまとめて使う                 | できるだけシンプルにして自動でスケール  |
-| 料金の考え方  | 使った分だけ細かく課金              | 企業契約を前提に比較的まとまった単位で課金       | 秒単位で無駄なく課金（最小1分）     |
+## 1. 設計思想の違い
+
+| 観点 | AWS | Azure | Google Cloud |
+|------|-----|-------|--------------|
+| **生まれた背景** | ECサイト運営で培った大量・安定インフラの再利用 | 企業向けIT（Microsoft製品）をクラウドに統合 | 検索・広告で培った超大規模データ処理基盤 |
+| **得意分野** | 選択肢が多く、細かく組み合わせられる | Microsoft製品と自然につながる | データ分析・機械学習・高速ネットワーク |
+| **基本的な考え方** | 部品を選んで自分で組み立てる | 既存製品をまとめて使う | できるだけシンプルにして自動でスケール |
+| **料金の考え方** | 使った分だけ細かく課金 | 企業契約を前提に比較的まとまった単位で課金 | 秒単位で無駄なく課金（最小1分） |
 
 ---
 
-## Azure & GCP 重要概念まとめ（AWS経験者向け）
+## 2. AWS経験者視点の混乱しやすいポイント
 
-### Part 1: Azure 重要概念
+### Azure で混乱する点
 
-**1. リソース階層**  
+#### リソース階層が全く違う
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Entra ID Tenant（旧 Azure AD Tenant）                       │
-│  └─ 組織の ID 基盤。1テナント = 1組織                           │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Management Group（管理グループ）                             │
-│  └─ Subscription をまとめる論理グループ                        │
-│  └─ ポリシーや RBAC を一括適用可能                             │
-│  └─ 最大6階層までネスト可能                                     │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Subscription（サブスクリプション）                             │
-│  └─ 課金の境界                                               │
-│  └─ AWSアカウントに最も近い概念                               │
-│  └─ 1テナントに複数Subscription可                           │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Resource Group - RG（リソースグループ）                     │
-│  └─ リソースをまとめる論理コンテナ                           │
-│  └─ ライフサイクル管理の単位                                 │
-│  └─ RG削除 → 中のリソース全削除                              │
-│  └─ リージョンをまたいでリソースを入れられる                  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Resource（リソース）                                        │
-│  └─ VM, Storage Account, VNet など実体                      │
-└─────────────────────────────────────────────────────────────┘
+```
+AWS:   Account → Region → VPC → Subnet → Resource
+
+Azure: Tenant → Subscription → Resource Group → Resource
+                                      ↑
+                            これがAWSにない概念！
 ```
 
-**AWSとの比較**  
+**Resource Group とは？**
+- リソースをまとめる論理的な箱
+- リージョンをまたげる
+- 課金・権限管理の単位にもなる
+- 削除すると中身も全部消える
+
+#### ネットワークの違い
+
+| 項目 | AWS VPC | Azure VNet |
+|------|---------|------------|
+| スコープ | リージョン内で閉じる | リージョン内で閉じる（同じ） |
+| AZ跨ぎ | Subnetで分ける | Subnetで分ける |
+| Peering | リージョン内 | **グローバル対応** |
+| セキュリティ | SG → ENI に付与 | **NSG → Subnet にも NIC にも付けられる** |
+
+#### IAMの違い
+
+| 項目 | AWS IAM | Azure |
+|------|---------|-------|
+| 構成 | User / Role / Policy が独立 | Entra ID（認証）+ RBAC（認可） |
+| 権限付与 | 信頼関係で AssumeRole | スコープに Role を割り当て |
+| スコープ | Account 全体 | Management Group / Subscription / RG / Resource |
+
+**RBAC（Role-Based Access Control）とは？**
+- Azureにおける権限制御の中核
+- 「① 誰に（Subject）② 何をさせるか（Role）③ どこまで（Scope）」をロールで決める仕組み
+
+---
+
+### Google Cloud で混乱する点
+
+#### プロジェクトという概念
+
+```
+AWS:   Account = 課金・権限の境界
+
+GCP:   Project = 課金・権限・リソースの境界
+           ↓
+       Organization の下に複数 Project
+       AWS の Account に近いが、より軽量に作れる
+```
+
+#### VPCがグローバル！
+
+```
+AWS VPC:  リージョン内で閉じる
+          └→ 別リージョンは別VPCが必要
+
+GCP VPC:  グローバル（全リージョンにまたがる）
+          └→ Subnet がリージョンスコープ
+          └→ 同一VPC内で全リージョン通信可能
+          └→ Peering 不要
+```
+
+**これが最大の違い。設計思想が根本的に異なる。**
+
+#### IAMの違い
+
+| 項目 | AWS | GCP |
+|------|-----|-----|
+| 権限付与 | User/Role に Policy を attach | Member に Role を bind（リソース階層で） |
+| Role | 権限のコンテナ | AWS の Policy に近い |
+| User | IAM User が存在 | User概念なし（Google Account を使う） |
+
+---
+
+## 3. Azure 重要概念
+
+### 3.1 リソース階層
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Entra ID Tenant（旧 Azure AD Tenant）                         │
+│  └─ 組織の ID 基盤。1テナント = 1組織                          │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Management Group（管理グループ）                              │
+│  └─ Subscription をまとめる論理グループ                        │
+│  └─ ポリシーや RBAC を一括適用可能                             │
+│  └─ 最大6階層までネスト可能                                    │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Subscription（サブスクリプション）                            │
+│  └─ 課金の境界                                                 │
+│  └─ AWSアカウントに最も近い概念                                │
+│  └─ 1テナントに複数Subscription可                              │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Resource Group - RG（リソースグループ）                       │
+│  └─ リソースをまとめる論理コンテナ                             │
+│  └─ ライフサイクル管理の単位                                   │
+│  └─ RG削除 → 中のリソース全削除                                │
+│  └─ リージョンをまたいでリソースを入れられる                   │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Resource（リソース）                                          │
+│  └─ VM, Storage Account, VNet など実体                        │
+└────────────────────────────────────────────────────────────────┘
+```
+
+#### AWSとの比較
 
 | Azure | AWS | 備考 |
 |-------|-----|------|
 | Tenant | Organization | IDの親玉 |
 | Management Group | OU (Organizational Unit) | ポリシー適用単位 |
 | Subscription | Account | 課金境界 |
-| Resource Group | **なし** | ←これが最大の違い |
+| Resource Group | **なし** | ← これが最大の違い |
 | Resource | Resource | 同じ |
 
-#### 2. ID・認証・認可
+---
 
-**Entra ID（旧 Azure AD / Azure Active Directory）**  
+### 3.2 ID・認証・認可
 
-```text
-【Entra ID の役割】
+#### Entra ID（旧 Azure AD / Azure Active Directory）
+
+```
 ┌────────────────────────────────────────┐
-│  認証 (Authentication) を担当     　     │
-│  「あなたは誰？」　を確認する          　   │
+│  認証 (Authentication) を担当          │
+│  「あなたは誰？」を確認する            │
 ├────────────────────────────────────────┤
-│  • User         　　　　　　　　　　      │
-│  • Group                 　　　　　　　  │
-│  • Service  Principal　　　　　　　　　   │
-│  • Managed  Identity  　 　　　　 　　　　│
+│  • User                                │
+│  • Group                               │
+│  • Service Principal                   │
+│  • Managed Identity                    │
 └────────────────────────────────────────┘
-
-【AWS との対比】
-AWS IAM User/Role  ≒  Entra ID User + Service Principal
-AWS IAM Policy     ≒  Azure RBAC Role（別システム）
 ```
 
-**主要な ID タイプ**  
+**AWS との対比**
+- AWS IAM User/Role ≒ Entra ID User + Service Principal
+- AWS IAM Policy ≒ Azure RBAC Role（別システム）
+
+#### 主要な ID タイプ
 
 | 名称 | 説明 | AWS相当 |
 |------|------|---------|
@@ -95,30 +176,25 @@ AWS IAM Policy     ≒  Azure RBAC Role（別システム）
 | **Service Principal - SP** | アプリ/サービス用ID | IAM Role (アプリ用) |
 | **Managed Identity - MI** | Azureリソース用の自動管理ID | IAM Role (EC2用) |
 
-**【Managed Identity の種類】**  
+#### Managed Identity の種類
 
-```text
-1. System-assigned（システム割り当て）
-   - リソースと1:1で紐づく
-   - リソース削除で自動削除
-   - AWS: EC2 Instance Profile に近い
+| 種類 | 説明 | AWS相当 |
+|------|------|---------|
+| **System-assigned** | リソースと1:1で紐づく / リソース削除で自動削除 | EC2 Instance Profile |
+| **User-assigned** | 独立したリソースとして作成 / 複数リソースで共有可能 | IAM Role を複数EC2で使い回す |
 
-2. User-assigned（ユーザー割り当て）
-   - 独立したリソースとして作成
-   - 複数リソースで共有可能
-   - AWS: IAM Role を複数EC2で使い回すイメージ
+#### RBAC（Role-Based Access Control）
+
+```
+┌────────────────────────────────────────┐
+│  認可 (Authorization) を担当           │
+│  「何ができるか」を制御する            │
+└────────────────────────────────────────┘
 ```
 
-**RBAC（Role-Based Access Control / ロールベースアクセス制御）**  
+**3つの要素**
 
-```text
-【RBAC の役割】
-┌────────────────────────────────────────┐
-│ 認可 (Authorization) を担当      　      │
-│ 何ができるかを制御する            　       │
-└────────────────────────────────────────┘
-
-【3つの要素】
+```
 ┌──────────────────┐
 │  Security        │  誰が？
 │  Principal       │  (User/Group/SP/MI)
@@ -137,10 +213,9 @@ AWS IAM Policy     ≒  Azure RBAC Role（別システム）
 └──────────────────┘
 
 この3つを紐づけるのが Role Assignment（ロール割り当て）
-
 ```
 
-**Entra ID と RBAC の関係**  
+#### Entra ID と RBAC の関係
 
 ```mermaid
 flowchart LR
@@ -172,7 +247,7 @@ flowchart LR
     R2 -->|"どの範囲で？"| Scope
 ```
 
-**組み込みロール（Built-in Roles）**  
+#### 組み込みロール（Built-in Roles）
 
 | ロール名 | 権限 | AWS相当 |
 |----------|------|---------|
@@ -181,95 +256,94 @@ flowchart LR
 | **Reader** | 読み取りのみ | ReadOnlyAccess |
 | **User Access Administrator** | 権限管理のみ | IAMFullAccess |
 
-**【AWSとの決定的な違い】**  
+#### AWSとの決定的な違い
 
-```text
-AWS:  IAM Policy を User/Role に attach
-      └─ Policy は Account 全体に影響
+```
+AWS:   IAM Policy を User/Role に attach
+       └─ Policy は Account 全体に影響
 
 Azure: Role を Scope に assign
        └─ Scope によって影響範囲が変わる
-       
-# 例：同じ「Contributor」でも
-# - Subscription に割り当て → Subscription 全体
-# - Resource Group に割り当て → その RG 内だけ
-# - 1つの VM に割り当て → その VM だけ
 ```
 
-#### 3. ネットワーク
+**例：同じ「Contributor」でも**
+- Subscription に割り当て → Subscription 全体
+- Resource Group に割り当て → その RG 内だけ
+- 1つの VM に割り当て → その VM だけ
 
-**基本構成要素**  
+---
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│  VNet（Virtual Network / 仮想ネットワーク）              │
-│  └─ リージョン内で閉じる（AWSと同じ）                    │
-│  └─ CIDR を指定して作成                                 │
-├─────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────────┐              │
-│  │  Subnet         │  │  Subnet         │              │
-│  │  10.0.1.0/24    │  │  10.0.2.0/24    │              │
-│  │                 │  │                 │              │
-│  │  ┌───┐ ┌───┐   │  │  ┌───┐         │              │
-│  │  │VM │ │VM │   │  │  │VM │         │              │
-│  │  │   │ │   │   │  │  │   │         │              │
-│  │  │NIC│ │NIC│   │  │  │NIC│         │              │
-│  │  └───┘ └───┘   │  │  └───┘         │              │
-│  └─────────────────┘  └─────────────────┘              │
-└─────────────────────────────────────────────────────────┘
+### 3.3 ネットワーク
+
+#### 基本構成要素
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  VNet（Virtual Network / 仮想ネットワーク）                  │
+│  └─ リージョン内で閉じる（AWSと同じ）                        │
+│  └─ CIDR を指定して作成                                      │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌────────────────────┐    ┌────────────────────┐           │
+│  │  Subnet            │    │  Subnet            │           │
+│  │  10.0.1.0/24       │    │  10.0.2.0/24       │           │
+│  │                    │    │                    │           │
+│  │  ┌────┐  ┌────┐   │    │  ┌────┐           │           │
+│  │  │ VM │  │ VM │   │    │  │ VM │           │           │
+│  │  │    │  │    │   │    │  │    │           │           │
+│  │  │NIC │  │NIC │   │    │  │NIC │           │           │
+│  │  └────┘  └────┘   │    │  └────┘           │           │
+│  └────────────────────┘    └────────────────────┘           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-**NIC（Network Interface Card）**  
+#### NIC（Network Interface Card）
 
-```text
-【NIC とは】
-VM にアタッチするネットワークの接続点
-
-┌─────────────────────────────────────┐
-│  VM (Virtual Machine)               │
-│                                     │
-│    ┌─────────────────────────┐     │
-│    │  NIC                     │     │
-│    │  ├─ Private IP           │     │
-│    │  ├─ Public IP (optional) │     │
-│    │  └─ NSG (optional)       │←─── NICレベルでNSG付与可能
-│    └─────────────────────────┘     │
-└─────────────────────────────────────┘
-
-【AWS との違い】
-AWS:  ENI は EC2 から独立したリソース（似てる）
-      Security Group は ENI に付ける
-
-Azure: NIC も独立したリソース
-       NSG は NIC にも Subnet にも付けられる ←ここが違う
+```
+┌──────────────────────────────────────┐
+│  VM (Virtual Machine)                │
+│                                      │
+│    ┌──────────────────────────┐     │
+│    │  NIC                      │     │
+│    │  ├─ Private IP            │     │
+│    │  ├─ Public IP (optional)  │     │
+│    │  └─ NSG (optional)        │ ←── NICレベルでNSG付与可能
+│    └──────────────────────────┘     │
+└──────────────────────────────────────┘
 ```
 
-**NSG（Network Security Group / ネットワークセキュリティグループ）**  
+**AWS との違い**
+- AWS: ENI は EC2 から独立したリソース（似てる）、Security Group は ENI に付ける
+- Azure: NIC も独立したリソース、**NSG は NIC にも Subnet にも付けられる** ← ここが違う
 
-```text
-【NSG = AWS Security Group + Network ACL のハイブリッド】
+#### NSG（Network Security Group）
 
-┌────────────────────────────────────────────────────────┐
-│  NSG の特徴                                            │
-├────────────────────────────────────────────────────────┤
-│  • Stateful（戻りトラフィック自動許可）                 │
-│  • 優先度（100-4096）で評価順を制御                     │
-│  • Inbound / Outbound 両方設定                        │
-│  • Subnet または NIC に関連付け                        │
-│  • 両方に付けた場合、両方評価される                     │
-└────────────────────────────────────────────────────────┘
+**NSG = AWS Security Group + Network ACL のハイブリッド**
 
-【評価順序】
+| 特徴 | 説明 |
+|------|------|
+| Stateful | 戻りトラフィック自動許可 |
+| 優先度 | 100-4096 で評価順を制御 |
+| 方向 | Inbound / Outbound 両方設定 |
+| 関連付け | Subnet または NIC |
+| 両方付与時 | 両方評価される |
+
+**評価順序**
+```
 Inbound:   Internet → Subnet NSG → NIC NSG → VM
 Outbound:  VM → NIC NSG → Subnet NSG → Internet
-
-【デフォルトルール（削除不可）】
-優先度65000: VNet内通信許可
-優先度65001: Azure LB からの通信許可
-優先度65500: 全拒否
 ```
 
-**AWS Security Group との比較**  
+**デフォルトルール（削除不可）**
+
+| 優先度 | ルール |
+|--------|--------|
+| 65000 | VNet内通信許可 |
+| 65001 | Azure LB からの通信許可 |
+| 65500 | 全拒否 |
+
+#### AWS Security Group との比較
 
 | 項目 | AWS SG | Azure NSG |
 |------|--------|-----------|
@@ -281,21 +355,21 @@ Outbound:  VM → NIC NSG → Subnet NSG → Internet
 
 #### ASG（Application Security Group）
 
-```text
-【ASG = VMをグループ化してNSGルールで参照】
+**VMをグループ化してNSGルールで参照**
 
-# AWS では SG を他の SG から参照できる
-# Azure では ASG を作って NSG ルールで参照
-
-┌─────────────────────────────────────────────┐
-│  ASG: "WebServers"                          │
-│  ├─ VM1                                     │
-│  └─ VM2                                     │
-└─────────────────────────────────────────────┘
+```
+┌──────────────────────────────────────────────┐
+│  ASG: "WebServers"                           │
+│  ├─ VM1                                      │
+│  └─ VM2                                      │
+└──────────────────────────────────────────────┘
 
 NSG ルール例：
   Allow TCP 443 from ASG:"FrontEnd" to ASG:"WebServers"
 ```
+
+- AWS では SG を他の SG から参照できる
+- Azure では ASG を作って NSG ルールで参照
 
 #### その他重要なネットワーク用語
 
@@ -311,7 +385,7 @@ NSG ルール例：
 
 ---
 
-### 4. コンピューティング
+### 3.4 コンピューティング
 
 | 名称 | Full Name | 説明 | AWS相当 |
 |------|-----------|------|---------|
@@ -327,7 +401,7 @@ NSG ルール例：
 
 ---
 
-### 5. ストレージ
+### 3.5 ストレージ
 
 #### Storage Account の構造
 
@@ -363,7 +437,9 @@ flowchart TB
 | **Cold** | 90日以上保存 | S3 Glacier IR |
 | **Archive** | 180日以上保存 | S3 Glacier |
 
-### 6. その他重要サービス
+---
+
+### 3.6 その他重要サービス
 
 | 名称 | Full Name | 説明 | AWS相当 |
 |------|-----------|------|---------|
@@ -378,63 +454,51 @@ flowchart TB
 | **ARM** | Azure Resource Manager | デプロイ基盤 | CloudFormation |
 | **Bicep** | - | ARM の DSL | - |
 
-## Part 2: Google Cloud 重要概念
+---
 
-### 1. リソース階層
+## 4. Google Cloud 重要概念
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Organization（組織）                                        │
-│  └─ Google Workspace または Cloud Identity に紐づく          │
-│  └─ なくても使える（個人利用時）                             │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Folder（フォルダ）                                          │
-│  └─ Project をまとめる論理グループ                           │
-│  └─ 複数階層ネスト可能                                       │
-│  └─ 部門や環境ごとに分ける                                   │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Project（プロジェクト）                                     │
-│  └─ リソース・課金・権限の基本単位                           │
-│  └─ AWSアカウントに近いが、より軽量                          │
-│  └─ 全リソースは必ず1つの Project に属する                   │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Resource（リソース）                                        │
-│  └─ VM, GCS Bucket, VPC など                                │
-└─────────────────────────────────────────────────────────────┘
+### 4.1 リソース階層
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Organization（組織）                                          │
+│  └─ Google Workspace または Cloud Identity に紐づく            │
+│  └─ なくても使える（個人利用時）                               │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Folder（フォルダ）                                            │
+│  └─ Project をまとめる論理グループ                             │
+│  └─ 複数階層ネスト可能                                         │
+│  └─ 部門や環境ごとに分ける                                     │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Project（プロジェクト）                                       │
+│  └─ リソース・課金・権限の基本単位                             │
+│  └─ AWSアカウントに近いが、より軽量                            │
+│  └─ 全リソースは必ず1つの Project に属する                     │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Resource（リソース）                                          │
+│  └─ VM, GCS Bucket, VPC など                                  │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-### Project の識別子（重要！）
+#### Project の識別子（重要！）
 
-```mermaid
-【3つの識別子】
+| 識別子 | 説明 |
+|--------|------|
+| **Project Name** | 人間が読む用 / 変更可能 / 一意でなくてよい |
+| **Project ID** | システムが使う / グローバルで一意 / **変更不可** / terraform や gcloud で使う |
+| **Project Number** | Google が自動付与 / 数字のみ / 一部APIで使用 |
 
-1. Project Name
-   - 人間が読む用
-   - 変更可能
-   - 一意でなくてよい
-
-2. Project ID
-   - システムが使う
-   - グローバルで一意
-   - 変更不可 ← 重要！
-   - terraform や gcloud で使う
-
-3. Project Number
-   - Google が自動付与
-   - 数字のみ
-   - 一部APIで使用
-```
-
-### AWS/Azure との比較
+#### AWS/Azure との比較
 
 | GCP | AWS | Azure |
 |-----|-----|-------|
@@ -445,31 +509,29 @@ flowchart TB
 
 ---
 
-## 2. IAM（Identity and Access Management）
+### 4.2 IAM（Identity and Access Management）
 
-### 基本構造
+#### 基本構造
 
-```mermaid
-【GCP IAM の考え方】
-
-    誰が        何を         どこで
-      │          │            │
-      ▼          ▼            ▼
-┌─────────┐ ┌─────────┐ ┌─────────────┐
-│ Member  │ │  Role   │ │  Resource   │
-│         │ │         │ │  (階層)     │
-└────┬────┘ └────┬────┘ └──────┬──────┘
-     │          │             │
-     └──────────┴─────────────┘
-                │
-                ▼
-         IAM Policy Binding
-         
-# AWS は Policy を User/Role に attach
-# GCP は Member に Role を bind（リソース階層で）
+```
+    誰が           何を          どこで
+      │             │             │
+      ▼             ▼             ▼
+┌──────────┐  ┌──────────┐  ┌──────────────┐
+│  Member  │  │   Role   │  │   Resource   │
+│          │  │          │  │   (階層)     │
+└────┬─────┘  └────┬─────┘  └──────┬───────┘
+     │             │               │
+     └─────────────┴───────────────┘
+                   │
+                   ▼
+          IAM Policy Binding
 ```
 
-### Member の種類
+- AWS は Policy を User/Role に attach
+- GCP は Member に Role を bind（リソース階層で）
+
+#### Member の種類
 
 | Member タイプ | 形式 | 説明 |
 |--------------|------|------|
@@ -478,64 +540,40 @@ flowchart TB
 | **Google Group** | group:name@googlegroups.com | グループ |
 | **Google Workspace Domain** | domain:example.com | ドメイン全体 |
 | **allAuthenticatedUsers** | - | 認証済み全ユーザー |
-| **allUsers** | - | インターネット全体（危険！） |
+| **allUsers** | - | インターネット全体（⚠️ 危険！） |
 
-### Service Account（SA）
+#### Service Account（SA）
 
-```text
-【Service Account = GCP版のIAM Role】
+**Service Account = GCP版のIAM Role**
 
-┌────────────────────────────────────────────────────┐
-│  Service Account の特徴                            │
-├────────────────────────────────────────────────────┤
-│  • アプリやVMが使うID                              │
-│  • email形式で識別                                 │
-│  • キーを発行可能（非推奨）                        │
-│  • VM に直接アタッチ可能                           │
-│  • Workload Identity で K8s と連携                 │
-└────────────────────────────────────────────────────┘
+| 特徴 | 説明 |
+|------|------|
+| 用途 | アプリやVMが使うID |
+| 識別 | email形式 |
+| キー | 発行可能（非推奨） |
+| アタッチ | VMに直接アタッチ可能 |
+| K8s連携 | Workload Identity |
 
-【AWS との対比】
-AWS EC2:  Instance Profile → IAM Role → Policy
-GCP GCE:  VM → Service Account → Role binding
+**AWS との対比**
+- AWS EC2: Instance Profile → IAM Role → Policy
+- GCP GCE: VM → Service Account → Role binding
 
-【キーの種類】
-1. Google管理キー（推奨）
-   - 自動ローテーション
-   - ユーザーはキーを見れない
+**キーの種類**
 
-2. ユーザー管理キー（非推奨）
-   - JSONキーファイル
-   - 漏洩リスクあり
-   - ローカル開発時のみ使う
-```
+| 種類 | 説明 |
+|------|------|
+| **Google管理キー（推奨）** | 自動ローテーション / ユーザーはキーを見れない |
+| **ユーザー管理キー（非推奨）** | JSONキーファイル / 漏洩リスクあり / ローカル開発時のみ |
 
-### Role の種類
+#### Role の種類
 
-```text
-【3種類のRole】
+| 種類 | 説明 | 使用場面 |
+|------|------|----------|
+| **Basic Roles（基本ロール）** | Owner / Editor / Viewer | ⚠️ 本番では使わない（権限が広すぎる） |
+| **Predefined Roles（事前定義ロール）** | roles/compute.admin など | ✅ 基本これを使う |
+| **Custom Roles（カスタムロール）** | 必要な権限だけを組み合わせ | 最小権限の原則を徹底する場合 |
 
-1. Basic Roles（基本ロール）旧称: Primitive Roles
-   ├─ Owner    : フル権限 + IAM管理
-   ├─ Editor   : 読み書き（IAM管理以外）
-   └─ Viewer   : 読み取りのみ
-   
-   ※ 本番では使わない（権限が広すぎる）
-
-2. Predefined Roles（事前定義ロール）
-   ├─ roles/compute.admin
-   ├─ roles/storage.objectViewer
-   └─ roles/cloudsql.client
-   
-   ※ 基本これを使う
-
-3. Custom Roles（カスタムロール）
-   └─ 必要な権限だけを組み合わせ
-   
-   ※ 最小権限の原則を徹底する場合
-```
-
-### 重要な Predefined Roles
+#### 重要な Predefined Roles
 
 | Role | 説明 | AWS相当 |
 |------|------|---------|
@@ -548,12 +586,9 @@ GCP GCE:  VM → Service Account → Role binding
 | roles/storage.objectViewer | オブジェクト読取 | S3ReadOnlyAccess |
 | roles/iam.serviceAccountUser | SA使用権限 | iam:PassRole相当 |
 
-### IAM Conditions（条件付きアクセス）
+#### IAM Conditions（条件付きアクセス）
 
-```text
-【IAM Conditions = 条件付きロール付与】
-
-例：特定IPからのみ許可
+```json
 {
   "role": "roles/storage.objectViewer",
   "members": ["user:alice@example.com"],
@@ -562,90 +597,78 @@ GCP GCE:  VM → Service Account → Role binding
     "title": "Only internal users"
   }
 }
-
-# AWS IAM Policy の Condition に相当
 ```
 
-## AWS IAM Policy の Condition に相当  
+AWS IAM Policy の Condition に相当
 
-## 3. ネットワーク（最大の違い！）
+---
 
-### VPC（Virtual Private Cloud）
+### 4.3 ネットワーク（最大の違い！）
 
-```text
-【GCP VPC = グローバルリソース！】
+#### VPC（Virtual Private Cloud）
 
-これがAWSとの最大の違い
+**GCP VPC = グローバルリソース！**
 
-AWS VPC:
-┌─────────────────────────────────────────┐
-│  VPC (us-east-1)                        │
-│  ├─ Subnet-A (us-east-1a)               │
-│  └─ Subnet-B (us-east-1b)               │
-└─────────────────────────────────────────┘
-┌─────────────────────────────────────────┐
-│  VPC (ap-northeast-1)  ← 別VPC必要      │
-│  ├─ Subnet-A (ap-northeast-1a)          │
-│  └─ Subnet-B (ap-northeast-1c)          │
-└─────────────────────────────────────────┘
+```
+【AWS VPC】
+┌──────────────────────────────────────────┐
+│  VPC (us-east-1)                         │
+│  ├─ Subnet-A (us-east-1a)                │
+│  └─ Subnet-B (us-east-1b)                │
+└──────────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  VPC (ap-northeast-1)  ← 別VPC必要       │
+│  ├─ Subnet-A (ap-northeast-1a)           │
+│  └─ Subnet-B (ap-northeast-1c)           │
+└──────────────────────────────────────────┘
 
-GCP VPC:
-┌─────────────────────────────────────────────────────┐
+【GCP VPC】
+┌──────────────────────────────────────────────────────┐
 │  VPC (グローバル)                                    │
-│  ├─ Subnet (us-central1)     10.0.1.0/24           │
-│  ├─ Subnet (asia-northeast1) 10.0.2.0/24           │
-│  └─ Subnet (europe-west1)    10.0.3.0/24           │
-│                                                     │
+│  ├─ Subnet (us-central1)      10.0.1.0/24           │
+│  ├─ Subnet (asia-northeast1)  10.0.2.0/24           │
+│  └─ Subnet (europe-west1)     10.0.3.0/24           │
+│                                                      │
 │  → 同一VPC内で全リージョンが通信可能！               │
-│  → Peering 不要                                     │
-└─────────────────────────────────────────────────────┘
+│  → Peering 不要                                      │
+└──────────────────────────────────────────────────────┘
 ```
 
-### VPC のモード
+#### VPC のモード
 
-```text
-【Auto Mode vs Custom Mode】
+| モード | 説明 | 用途 |
+|--------|------|------|
+| **Auto Mode VPC** | 各リージョンに自動でSubnet作成 / CIDRはGoogleが決定 | 学習・テスト用 |
+| **Custom Mode VPC（推奨）** | Subnetを手動作成 / CIDRを自分で設計 | 本番環境 |
 
-1. Auto Mode VPC
-   - 各リージョンに自動でSubnet作成
-   - CIDR は Google が決定
-   - 学習・テスト用
+Terraform では `auto_create_subnetworks = false`
 
-2. Custom Mode VPC（推奨）
-   - Subnet を手動作成
-   - CIDR を自分で設計
-   - 本番環境はこれ
+#### Firewall Rules
 
-# Terraform では auto_create_subnetworks = false
-```
+**GCP Firewall = VPCレベルで適用**
 
-### Firewall Rules
+- AWS: Security Group → ENI に付与
+- GCP: Firewall Rule → VPC全体に適用 → Target で絞る
 
-```text
-【GCP Firewall = VPCレベルで適用】
+| 構成要素 | 説明 |
+|----------|------|
+| Direction | INGRESS / EGRESS |
+| Priority | 0-65535（小さいほど優先） |
+| Action | allow / deny |
+| Target | 適用先 |
+| Source/Dest | IP範囲 or Tag or SA |
+| Protocol | tcp, udp, icmp など |
+| Ports | ポート番号 |
 
-AWS:  Security Group → ENI に付与
-GCP:  Firewall Rule → VPC全体に適用 → Target で絞る
+**Target の指定方法**
 
-┌────────────────────────────────────────────────────┐
-│  Firewall Rule の構成要素                          │
-├────────────────────────────────────────────────────┤
-│  Direction    : INGRESS / EGRESS                  │
-│  Priority     : 0-65535（小さいほど優先）          │
-│  Action       : allow / deny                      │
-│  Target       : 適用先（後述）                    │
-│  Source/Dest  : IP範囲 or Tag or SA               │
-│  Protocol     : tcp, udp, icmp など               │
-│  Ports        : ポート番号                        │
-└────────────────────────────────────────────────────┘
+| 方法 | 説明 |
+|------|------|
+| All instances in VPC | VPC全体 |
+| Specified target tags | Network Tag で指定 |
+| Specified service accounts | SA で指定 |
 
-【Target の指定方法】
-1. All instances in VPC      : VPC全体
-2. Specified target tags     : Network Tag で指定
-3. Specified service accounts: SA で指定
-```
-
-### Network Tags
+#### Network Tags
 
 ```mermaid
 flowchart TB
@@ -664,11 +687,12 @@ flowchart TB
         FW -->|"適用"| VM1
         FW -.->|"適用されない"| VM2
     end
-    
-    Compare["💡 AWS: VM → ENI → SG を attach<br/>GCP: VM に Tag → Firewall Rule が Tag を参照"]
 ```
 
-### 重要なネットワーク用語
+- AWS: VM → ENI → SG を attach
+- GCP: VM に Tag → Firewall Rule が Tag を参照
+
+#### 重要なネットワーク用語
 
 | 名称 | Full Name | 説明 | AWS相当 |
 |------|-----------|------|---------|
@@ -684,32 +708,30 @@ flowchart TB
 | **PGA** | Private Google Access | Google APIへのプライベート接続 | VPC Endpoint |
 | **PSC** | Private Service Connect | サービスへのプライベート接続 | PrivateLink |
 
-### Shared VPC
+#### Shared VPC
 
-```text
-【Shared VPC = 複数 Project で VPC を共有】
-
-┌─────────────────────────────────────────────────────┐
-│  Host Project（ホストプロジェクト）                  │
-│  └─ VPC を所有                                      │
-│  └─ Subnet を管理                                   │
-└─────────────────────────────────────────────────────┘
-         │
-         │ 共有
-         ▼
-┌─────────────────────────────────────────────────────┐
-│  Service Project（サービスプロジェクト）             │
-│  └─ Host Project の Subnet を使用                   │
-│  └─ VM などを作成                                   │
-└─────────────────────────────────────────────────────┘
-
-# 大規模環境でネットワークを一元管理する時に使う
-# AWS では Organizations + RAM で似たことができる
 ```
+┌──────────────────────────────────────────────────────┐
+│  Host Project（ホストプロジェクト）                  │
+│  └─ VPC を所有                                       │
+│  └─ Subnet を管理                                    │
+└──────────────────────────────────────────────────────┘
+                    │
+                    │ 共有
+                    ▼
+┌──────────────────────────────────────────────────────┐
+│  Service Project（サービスプロジェクト）             │
+│  └─ Host Project の Subnet を使用                    │
+│  └─ VM などを作成                                    │
+└──────────────────────────────────────────────────────┘
+```
+
+- 大規模環境でネットワークを一元管理する時に使う
+- AWS では Organizations + RAM で似たことができる
 
 ---
 
-### 4. コンピューティング  
+### 4.4 コンピューティング
 
 #### GCE（Google Compute Engine）
 
@@ -722,27 +744,28 @@ flowchart TB
 | **Spot VM** | - | 新しい格安VM | Spot Instance |
 | **Sole-tenant Node** | - | 専有ホスト | Dedicated Host |
 
-### マシンタイプ
+#### マシンタイプの命名規則
 
-```text
-【マシンタイプの命名規則】
-
+```
 e2-standard-4
-│   │       │
-│   │       └─ vCPU数
+│   │        │
+│   │        └─ vCPU数
 │   └─ シリーズ（standard/highmem/highcpu）
 └─ ファミリー
-
-【主なファミリー】
-E2  : 汎用（コスパ良）
-N2  : 汎用（高性能）
-N2D : AMD EPYC
-C2  : コンピュート最適化
-M2  : メモリ最適化
-A2  : GPU（A100）
 ```
 
-### その他のコンピュート
+**主なファミリー**
+
+| ファミリー | 用途 |
+|------------|------|
+| E2 | 汎用（コスパ良） |
+| N2 | 汎用（高性能） |
+| N2D | AMD EPYC |
+| C2 | コンピュート最適化 |
+| M2 | メモリ最適化 |
+| A2 | GPU（A100） |
+
+#### その他のコンピュート
 
 | 名称 | Full Name | 説明 | AWS相当 |
 |------|-----------|------|---------|
@@ -754,31 +777,34 @@ A2  : GPU（A100）
 
 ---
 
-## 5. ストレージ
+### 4.5 ストレージ
 
-### GCS（Google Cloud Storage）
+#### GCS（Google Cloud Storage）
 
-```text
-【GCS = S3 相当】
-
-構造：
+```
 gs://bucket-name/object-key
       │
       └─ グローバルで一意
-
-【ストレージクラス】
-Standard       : 頻繁アクセス    → S3 Standard
-Nearline       : 月1回アクセス   → S3 Standard-IA
-Coldline       : 年1回アクセス   → S3 Glacier IR
-Archive        : 年1回未満       → S3 Glacier Deep Archive
-
-【ロケーションタイプ】
-Region         : 単一リージョン
-Dual-region    : 2リージョン
-Multi-region   : 大陸レベル（US, EU, ASIA）
 ```
 
-### その他のストレージ
+**ストレージクラス**
+
+| クラス | 説明 | AWS相当 |
+|--------|------|---------|
+| Standard | 頻繁アクセス | S3 Standard |
+| Nearline | 月1回アクセス | S3 Standard-IA |
+| Coldline | 年1回アクセス | S3 Glacier IR |
+| Archive | 年1回未満 | S3 Glacier Deep Archive |
+
+**ロケーションタイプ**
+
+| タイプ | 説明 |
+|--------|------|
+| Region | 単一リージョン |
+| Dual-region | 2リージョン |
+| Multi-region | 大陸レベル（US, EU, ASIA） |
+
+#### その他のストレージ
 
 | 名称 | Full Name | 説明 | AWS相当 |
 |------|-----------|------|---------|
@@ -794,7 +820,7 @@ Multi-region   : 大陸レベル（US, EU, ASIA）
 
 ---
 
-## 6. その他重要サービス
+### 4.6 その他重要サービス
 
 | 名称 | Full Name | 説明 | AWS相当 |
 |------|-----------|------|---------|
@@ -819,9 +845,30 @@ Multi-region   : 大陸レベル（US, EU, ASIA）
 
 ---
 
-# 学習優先順位
+## 5. よく使うサービス名のマッピング
 
-## Azure（AZ-900向け）
+| 用途 | AWS | Azure | Google Cloud |
+|------|-----|-------|--------------|
+| **仮想マシン** | EC2 | Virtual Machines | Compute Engine |
+| **コンテナ(マネージド)** | ECS/EKS | AKS | GKE |
+| **サーバーレス関数** | Lambda | Functions | Cloud Functions |
+| **オブジェクトストレージ** | S3 | Blob Storage | Cloud Storage |
+| **RDB** | RDS | Azure SQL/MySQL/PostgreSQL | Cloud SQL |
+| **NoSQL** | DynamoDB | Cosmos DB | Firestore/Bigtable |
+| **VPC** | VPC | VNet | VPC |
+| **ロードバランサ** | ALB/NLB | Application Gateway/Load Balancer | Cloud Load Balancing |
+| **DNS** | Route 53 | Azure DNS | Cloud DNS |
+| **CDN** | CloudFront | Azure CDN/Front Door | Cloud CDN |
+| **IAM** | IAM | Entra ID + RBAC | IAM |
+| **監視** | CloudWatch | Monitor | Cloud Monitoring |
+| **IaC** | CloudFormation | ARM/Bicep | Deployment Manager |
+| **シークレット** | Secrets Manager | Key Vault | Secret Manager |
+
+---
+
+## 6. 学習のロードマップ
+
+### Azure（AZ-900向け）
 
 ```mermaid
 flowchart LR
@@ -842,7 +889,7 @@ flowchart LR
     Week1 --> Week2
 ```
 
-## GCP（ACE向け）
+### GCP（ACE向け）
 
 ```mermaid
 flowchart LR
@@ -863,90 +910,17 @@ flowchart LR
     Week1 --> Week2
 ```
 
-2. 
+---
 
-## AWS経験視点の混乱しやすいポイント
+## 7. 推奨リソース
+
+### Google Cloud
+
+- [Google Cloud Skills Boost](https://www.cloudskillsboost.google/)（無料クレジットあり）
+- Udemy の ACE対策コース
+- 公式ドキュメント（日本語あり）
 
 ### Azure
 
-```text
-【リソース階層が全く違う】
-
-AWS:   Account → Region → VPC → Subnet → Resource
-Azure: Tenant → Subscription → Resource Group → Resource
-                                    ↑
-                          これがAWSにない概念！
-                          
-Resource Group = リソースをまとめる論理的な箱
-- リージョンをまたげる
-- 課金・権限管理の単位にもなる
-- 削除すると中身も全部消える
-```
-
-```text
-【ネットワークの違い】
-
-AWS VPC:
-- リージョン内で閉じる
-- AZ跨ぎはSubnetで分ける
-
-Azure VNet:
-- リージョン内で閉じる（ここは同じ）
-- でもVNet Peeringがグローバル対応
-- NSG（Subscription）はSubnetにもNIC（Network Interface ）にも付けられる
-```
-
-```text
-【IAMの違い】
-
-AWS IAM: 
-- User/Role/Policy が独立
-- 信頼関係でAssumeRole
-
-Azure RBAC + Entra ID（旧Azure AD）:
-- Entra IDでID管理（認証）
-- RBACで権限管理（認可）
-- スコープ（Management Group/Subscription/RG/Resource）に割り当て
-
-RBAC：Role-Based Access Control
-Azureにおける 権限制御の中核 、「① 誰に（Subject）
-② 何をさせるか（Role）
-③ どこまで（Scope）」をロールで決める仕組み
-
-```
-
-### Google　Cloud
-
-```text
-【プロジェクトという概念】
-
-AWS:   Account = 課金・権限の境界
-GCP:   Project = 課金・権限・リソースの境界
-              ↓
-       Organizationの下に複数Project
-       AWSのAccountに近いが、より軽量に作れる
-```
-
-```text
-【VPCがグローバル！】
-
-AWS VPC: リージョン内
-GCP VPC: グローバル（全リージョンにまたがる）
-         └→ Subnetがリージョンスコープ
-         
-# これが最大の違い。設計思想が根本的に異なる。
-```
-
-```text
-【IAMの違い】
-
-AWS:  User/Role にPolicy をattach
-GCP:  Member に Role を bind（リソース階層のどこかで）
-
-# GCPのRoleはAWSのPolicyに近い
-# GCPにはUserという概念がない（Google Accountを使う）
-```
-
-## よく使うもサービス名のマッピング
-
-## 学習のロードマップ
+- [Microsoft Learn](https://learn.microsoft.com/ja-jp/training/)（無料＆質が高い）
+- Azure Free Account（$200クレジット + 12ヶ月無料枠）
