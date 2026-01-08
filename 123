@@ -1,0 +1,122 @@
+function prompt {
+    Write-Host
+    Write-Host( Get-Date -format "yyyy/MM/dd HH:mm") -ForegroundColor Green -NoNewline
+    Write-Host( " | " + $env:username + "@" + ([net.dns]::GetHostName()) ) -ForegroundColor Yellow -NoNewline
+    Write-Host( " | " + (Split-Path (Get-Location) -Leaf) ) -ForegroundColor Magenta # 絶対パス/現しは(Get-Location)
+    return "> "
+}
+
+# 18 references
+function Terraform {
+    param (
+        # # Terraformのサブコマンド
+        [string]$command,
+        # オプションや引数
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$TerraformArgs
+    )
+
+    # Terraformコマンドの絶対パス (scoopのshim)
+    $TerraformPath = "C:\Users\xiaji1\scoop\shims\terraform.exe"
+
+    if (!$command) {
+        & $TerraformPath $Command @TerraformArgs
+        return
+    }
+
+    # ==============================================
+    # 初期設定
+    # ==============================================
+    $ConsoleOutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $PSDefaultParameterValues['Out-Default:Encoding'] = 'utf8'
+
+    # ログディレクトリ設定
+    $logDir = "D:\Users\xiaji1\Documents\terraform_logs"
+    if (!(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir }
+
+    $YMD = (Get-Date -Format "yyyyMMdd")
+    $logFile = Join-Path $logDir "tf_$($YMD)_(1).log"
+    $StartTime = Get-Date
+    Start-Transcript -Path $logFile -Append
+
+    # Terraformバージョン出力
+    $TerraformPath --version -json | ConvertFrom-Json | Format-List
+
+    # ==============================================
+    # planファイル処理のヘルパー関数
+    # ==============================================
+    function Get-PlanFileFromArgs {
+        param([string[]]$Args)
+        
+        # -out=filename 形式を探す
+        $outArg = $Args | Where-Object { $_ -like '-out=*' } | Select-Object -First 1
+        if ($outArg) {
+            return $outArg -replace '^-out=', ''
+        }
+        
+        # -out filename 形式を探す
+        $outIndex = [array]::IndexOf($Args, '-out')
+        if ($outIndex -ge 0 -and $outIndex + 1 -lt $Args.Count) {
+            return $Args[$outIndex + 1]
+        }
+        
+        return $null
+    }
+
+    function Add-DefaultPlanFile {
+        param([string[]]$Args, [string]$DefaultFile = 'plan.tfplan')
+        
+        Write-Host "planファイルが指定されていないため、デフォルトの $DefaultFile を使用します。" -ForegroundColor Yellow
+        return $Args + "-out=$DefaultFile"
+    }
+
+    function Get-ExistingPlanFile {
+        param([string[]]$Args)
+        
+        # 引数から.tfplanファイルを探す
+        $planArg = $Args | Where-Object { $_ -like '*.tfplan' } | Select-Object -First 1
+        if ($planArg) { return $planArg }
+        
+        # デフォルトファイルを探す
+        $defaultPlan = 'plan.tfplan'
+        if (Test-Path $defaultPlan) { return $defaultPlan }
+        
+        return $null
+    }
+
+    # ==============================================
+    # plan/apply コマンドの引数処理
+    # ==============================================
+    $planFile = $null
+
+    if ($command -eq 'plan') {
+        $planFile = Get-PlanFileFromArgs -Args $TerraformArgs
+        
+        if (!$planFile) {
+            $planFile = 'plan.tfplan'
+            $TerraformArgs = Add-DefaultPlanFile -Args $TerraformArgs -DefaultFile $planFile
+        } else {
+            Write-Host "指定されたplanファイル: $planFile を使用します。" -ForegroundColor Green
+        }
+    }
+
+    if ($command -eq 'apply') {
+        $planFile = Get-ExistingPlanFile -Args $TerraformArgs
+        
+        if (!$planFile) {
+            throw "applyコマンド実行時にplanファイルが見つかりません。先に 'terraform plan' を実行してください。"
+        }
+        
+        # 引数にplanファイルが含まれていない場合は追加
+        $hasPlanInArgs = $TerraformArgs | Where-Object { $_ -like '*.tfplan' }
+        if (!$hasPlanInArgs) {
+            Write-Host "既存の $planFile を使用します。" -ForegroundColor Yellow
+            $TerraformArgs = @($planFile) + $TerraformArgs
+        } else {
+            Write-Host "指定されたplanファイル: $planFile を使用します。" -ForegroundColor Green
+        }
+        
+        if (!(Test-Path $planFile)) {
+            throw "指定された​​​​​​​​​​​​​​​​
