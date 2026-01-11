@@ -16,7 +16,7 @@ function Terraform {
     )
 
     # Terraformコマンドの絶対パス (scoop shim)
-    $TerraformPath = "C:\Users\xiajl\scoop\shims\terraform.exe"
+    $TerraformPath = "C:\Users\123\terraform.exe"
 
     if ($Command -eq 'init' -or $Command -eq 'plan' -or $Command -eq 'apply' -or $Command -eq 'destroy') {
 
