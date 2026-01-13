@@ -16,7 +16,7 @@ function Terraform {
     )
 
     # Terraformコマンドの絶対パス (scoop shim)
-    $TerraformPath = "C:\Users\123\terraform.exe"
+    $TerraformPath = "C:\Users\xiajl\scoop\shims\terraform.exe"
 
     if ($Command -eq 'init' -or $Command -eq 'plan' -or $Command -eq 'apply' -or $Command -eq 'destroy') {
 
@@ -55,45 +55,48 @@ function Terraform {
         $LogFile = "C:\Users\${env:USERNAME}\Documents\terraform_logs\tf_$(Get-Date -Format 'yyyyMMdd')_${PID}.log"
         Start-Transcript $LogFile -Append -IncludeInvocationHeader
 
-        # Terraformバージョン情報を出力
-        terraform --version -json | ConvertFrom-Json | Format-List
+        try {
+            # Terraformバージョン情報を出力
+            terraform --version -json | ConvertFrom-Json | Format-List
 
-        # 実行コマンドと引数を出力
-        $ParamArray = $FinalParams.ToArray()
-        $CommandLine = "terraform $Command $($ParamArray -join ' ')"
-        Write-Output "実行コマンド:`n$CommandLine`n"
+            # 実行コマンドと引数を出力
+            $ParamArray = $FinalParams.ToArray()
+            $CommandLine = "terraform $Command $($ParamArray -join ' ')"
+            Write-Output "実行コマンド:`n$CommandLine`n"
 
-        # コマンド実行開始時刻記録
-        $StartTime = Get-Date
+            # コマンド実行開始時刻記録
+            $StartTime = Get-Date
 
-        # Terraformコマンド実行
-        & $TerraformPath $Command $ParamArray | Out-Default
+            # Terraformコマンド実行
+            & $TerraformPath $Command $ParamArray | Out-Default
 
-        # ===== 新規: plan後 tfplan ファイル情報出力 =====
-        $OutArg = $ParamArray | Where-Object { $_ -match '^-out=(.+)$' } | Select-Object -First 1
-        $PlanFilePath = if ($OutArg -match '^-out=(.+)$') { $Matches[1] } else { $null }
-        $ShowPlanInfo = $IsPlan -and $PlanFilePath -and (Test-Path $PlanFilePath)
-        if ($ShowPlanInfo) {
-            $PlanFileInfo = Get-Item $PlanFilePath
-            Write-Output "`n----- Plan File Info -----"
-            Write-Output "PATH        : $($PlanFileInfo.FullName)"
-            Write-Output "SIZE        : $($PlanFileInfo.Length) bytes"
-            Write-Output "UPDATED     : $($PlanFileInfo.LastWriteTime.ToString('yyyy/MM/dd HH:mm:ss'))"
-            Write-Output "--------------------------"
+            # ===== 新規: plan後 tfplan ファイル情報出力 =====
+            $OutArg = $ParamArray | Where-Object { $_ -match '^-out=(.+)$' } | Select-Object -First 1
+            $PlanFilePath = if ($OutArg -match '^-out=(.+)$') { $Matches[1] } else { $null }
+            $ShowPlanInfo = $IsPlan -and $PlanFilePath -and (Test-Path $PlanFilePath)
+            if ($ShowPlanInfo) {
+                $PlanFileInfo = Get-Item $PlanFilePath
+                Write-Output "`n----- Plan File Info -----"
+                Write-Output "PATH        : $($PlanFileInfo.FullName)"
+                Write-Output "SIZE        : $($PlanFileInfo.Length) bytes"
+                Write-Output "UPDATED     : $($PlanFileInfo.LastWriteTime.ToString('yyyy/MM/dd HH:mm:ss'))"
+                Write-Output "--------------------------"
+            }
+
+            # コマンド実行時間算出
+            $EndTime = Get-Date
+            $ExecutionTime = New-TimeSpan -Start $StartTime -End $EndTime
+            $FormattedExecutionTime = "{0} 時間 {1} 分 {2} 秒" -f `
+                $ExecutionTime.Hours, $ExecutionTime.Minutes, $ExecutionTime.Seconds
+            Write-Output "`nコマンド実行時間: $FormattedExecutionTime"
         }
+        finally {
+            # ログ記録停止（エラーが発生しても必ず実行）
+            Stop-Transcript
 
-        # コマンド実行時間算出
-        $EndTime = Get-Date
-        $ExecutionTime = New-TimeSpan -Start $StartTime -End $EndTime
-        $FormattedExecutionTime = "{0} 時間 {1} 分 {2} 秒" -f `
-            $ExecutionTime.Hours, $ExecutionTime.Minutes, $ExecutionTime.Seconds
-        Write-Output "`nコマンド実行時間: $FormattedExecutionTime"
-
-        # ログ記録停止
-        Stop-Transcript
-
-        # PowerShellの出力エンコーディングをデフォルトに戻す
-        [Console]::OutputEncoding = $DefaultEncoding
+            # PowerShellの出力エンコーディングをデフォルトに戻す
+            [Console]::OutputEncoding = $DefaultEncoding
+        }
     }
     else {
         # 通常のTerraformコマンドを実行 (ログを記録しない)
